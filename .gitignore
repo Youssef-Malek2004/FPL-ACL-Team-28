@@ -1,0 +1,59 @@
+# ----------------------------
+# PyCharm / IntelliJ
+# ----------------------------
+.idea/
+*.iml
+*.iws
+out/
+.idea_modules/
+
+# ----------------------------
+# Python
+# ----------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.env/
+.env*/
+.venv*/
+pip-wheel-metadata/
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+
+# ----------------------------
+# Jupyter Notebook
+# ----------------------------
+.ipynb_checkpoints/
+.jupyter/
+*.nbconvert.ipynb
+
+# ----------------------------
+# OS / System Files
+# ----------------------------
+.DS_Store
+Thumbs.db
+
+# ----------------------------
+# Logs / Cache
+# ----------------------------
+*.log
+.cache/
+.pytest_cache/
+.mypy_cache/
+__pypackages__/
+
+# ----------------------------
+# Others
+# ----------------------------
+*.sqlite3
+*.db
+*.bak
+*.swp
+*.tmp
+*.temp
