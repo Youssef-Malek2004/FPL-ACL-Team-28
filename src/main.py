@@ -1,0 +1,56 @@
+# src/main.py
+import os
+import sys
+import argparse
+import pandas as pd
+
+# How to run ->  "python src/main.py" in the Terminal
+
+# Make project root (parent of src/) importable
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from scripts.data_cleaning import drop_columns_save_interim
+
+# Defaults
+DEFAULT_INPUT_REL = os.path.join("data", "raw", "cleaned_merged_seasons.csv")
+DEFAULT_INPUT = os.path.join(PROJECT_ROOT, DEFAULT_INPUT_REL)
+DEFAULT_FILENAME = "merged_seasons"
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Clean FPL dataset and save to data/interim")
+    p.add_argument(
+        "--input",
+        default=os.environ.get("FPL_INPUT", DEFAULT_INPUT),
+        help=f"Path to input CSV (default: {DEFAULT_INPUT_REL})",
+    )
+    p.add_argument(
+        "--filename",
+        default=os.environ.get("FPL_FILENAME", DEFAULT_FILENAME),
+        help=f"Base name for saved files (default: {DEFAULT_FILENAME})",
+    )
+    return p.parse_args()
+
+def main():
+    args = parse_args()
+
+    input_path = args.input if os.path.isabs(args.input) else os.path.join(PROJECT_ROOT, args.input)
+
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Input CSV not found: {input_path}")
+
+    df = pd.read_csv(input_path)
+
+    cols_to_drop = [
+        "selected", "transfers_in", "transfers_out",
+        "transfers_balance", "value", "GW", 'element',
+        'fixture', 'kickoff_time', 'opponent_team'
+    ]
+
+    df_cleaned = drop_columns_save_interim(df, cols_to_drop, filename=args.filename)
+
+    print(df_cleaned.head())
+
+if __name__ == "__main__":
+    main()
