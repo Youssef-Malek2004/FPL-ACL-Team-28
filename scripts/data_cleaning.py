@@ -8,9 +8,8 @@ def drop_columns_save_interim(
     output_subdir: str = "interim",
 ) -> pd.DataFrame:
     """
-    Drops popularity, value, and GW-related columns from a DataFrame.
-    Saves both the cleaned DataFrame and the dropped columns separately
-    in ../data/interim relative to this script.
+    Drops specified columns from a DataFrame.
+    Saves the cleaned DataFrame in ../data/interim relative to this script.
 
     Parameters
     ----------
