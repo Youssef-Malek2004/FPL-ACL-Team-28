@@ -11,12 +11,13 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from scripts.data_cleaning import drop_columns_save_interim
+from scripts.data_cleaning import drop_columns_save_interim, normalize_position_column
+from scripts.feature_engineering import label_encode_column, one_hot_encode_columns
 
 # Defaults
 DEFAULT_INPUT_REL = os.path.join("data", "raw", "cleaned_merged_seasons.csv")
 DEFAULT_INPUT = os.path.join(PROJECT_ROOT, DEFAULT_INPUT_REL)
-DEFAULT_FILENAME = "merged_seasons"
+DEFAULT_FILENAME = "dataset"
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Clean FPL dataset and save to data/interim")
@@ -50,7 +51,17 @@ def main():
 
     df_cleaned = drop_columns_save_interim(df, cols_to_drop, filename=args.filename)
 
-    print(df_cleaned.head())
+    df_cleaned = normalize_position_column(df_cleaned)
+
+    df_label_encoded, le_name = label_encode_column(df_cleaned, column="name")
+
+    cols_to_one_hot_encode = [
+        "position",
+    ]
+
+    df_one_hot_encoded = one_hot_encode_columns(df_label_encoded, cols_to_one_hot_encode)
+
+    print(df_one_hot_encoded.columns)
 
 if __name__ == "__main__":
     main()

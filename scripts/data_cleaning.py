@@ -47,3 +47,43 @@ def drop_columns_save_interim(
     print(f"Cleaned file saved to: {cleaned_path}")
 
     return df_reduced
+
+def normalize_position_column(
+    df: pd.DataFrame,
+    column: str = "position",
+    filename: str = "dataset",
+    output_subdir: str = "interim",
+) -> pd.DataFrame:
+    """
+    Normalizes position values — e.g., replaces 'GKP' with 'GK' — and saves the cleaned dataset.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    column : str, optional
+        The column to normalize (default is 'position').
+    filename : str, optional
+        Base name for saved file (default is 'dataset').
+    output_subdir : str, optional
+        Subdirectory under /data to save (default is 'interim').
+
+    Returns
+    -------
+    pd.DataFrame
+        Updated DataFrame with normalized position values.
+    """
+
+    # Determine save path (../data/interim)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.abspath(os.path.join(script_dir, "..", "data", output_subdir))
+    os.makedirs(data_dir, exist_ok=True)
+
+    df = df.copy()
+    df[column] = df[column].apply(lambda x: "GK" if x == "GKP" else x)
+
+    # Save cleaned file
+    cleaned_path = os.path.join(data_dir, f"{filename}_normalized.csv")
+    df.to_csv(cleaned_path, index=False)
+
+    return df
