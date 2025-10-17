@@ -301,3 +301,10 @@ def add_upcoming_total_points(
     )
     df_sorted = df_sorted.dropna(subset=["upcoming_total_points"]).reset_index(drop=True)
     return df_sorted
+
+def season_start_year(season_str: str) -> int:
+    s = str(season_str)
+    try:
+        return int(s.split("-")[0])
+    except Exception:
+        return int(float(s))

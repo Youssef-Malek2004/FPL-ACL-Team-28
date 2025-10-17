@@ -11,14 +11,14 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from scripts.model_training import train_ffnn, build_xy,train_catboost, evaluate_model
-from scripts.data_visualization import plot_learning_curves
-from sklearn.model_selection import train_test_split
+from scripts.model_training import (train_ffnn, build_xy, train_catboost,
+                                    evaluate_model, auto_global_temporal_split,
+                                    auto_global_temporal_split_inseason)
+from scripts.data_visualization import plot_learning_curves, summarize_round_splits
 from scripts.data_cleaning import drop_columns_save_interim, normalize_position_column
 from scripts.feature_engineering import (label_encode_column, one_hot_encode_columns,
                                          map_bool_to_int, add_form, add_team_and_opponent_goals,
                                          add_lag_features, add_upcoming_total_points)
-
 
 # Defaults
 DEFAULT_INPUT_REL = os.path.join("data", "raw", "cleaned_merged_seasons.csv")
@@ -93,23 +93,89 @@ def main():
 
     df_with_target = add_upcoming_total_points(df_with_lagged_features)
 
-    X, y = build_xy(df_with_target)
+    X, y = build_xy(df_with_target, keep_player_id=True, player_col="name_encoded")
 
     X = X.drop(columns=['total_points'])
 
-    X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.2, shuffle=False)
+    # Without inter-season splits
+    # train_idx, valid_idx, test_idx, years_sorted = auto_global_temporal_split(
+    #     df_with_target,
+    #     season_col="season_x",
+    #     week_col="round",
+    #     train_frac=0.8,
+    #     valid_frac=0.2,
+    #     test_frac=0.2
+    # )
 
-    X_valid, X_test, y_valid, y_test = train_test_split(X_temp, y_temp, test_size=0.5, shuffle=False)
+    # With inter-season splits
+    train_idx, valid_idx, test_idx, years_sorted = auto_global_temporal_split_inseason(
+        df_with_target,
+        season_col="season_x",
+        week_col="round",
+        train_frac=0.8, valid_frac=0.1, test_frac=0.1,
+        split_train_valid=True, ratio_train_valid=0.8,
+        split_valid_test=True, ratio_valid_test=0.5,
+    )
 
+    _ = summarize_round_splits(
+        df=df_with_target,
+        train_idx=train_idx,
+        valid_idx=valid_idx,
+        test_idx=test_idx,
+        season_col="season_x",
+        week_col="round",
+    )
+
+    X_train, y_train = X.loc[train_idx].copy(), y.loc[train_idx].copy()
+    X_valid, y_valid = X.loc[valid_idx].copy(), y.loc[valid_idx].copy()
+    X_test, y_test = X.loc[test_idx].copy(), y.loc[test_idx].copy()
+
+    # --- Keep a copy of name_encoded for masks BEFORE dropping it from features ---
+    train_names = X_train["name_encoded"].copy()
+    _ = X_valid["name_encoded"].copy()
+    test_names = X_test["name_encoded"].copy()
+
+    # --- Drop player id from model inputs (FFNN & CatBoost here use same X) ---
+    X_train = X_train.drop(columns=["name_encoded"], errors="ignore")
+    X_valid = X_valid.drop(columns=["name_encoded"], errors="ignore")
+    X_test = X_test.drop(columns=["name_encoded"], errors="ignore")
+
+    print(f"Seasons by start year (chronological): {years_sorted}")
+    print(f"Train rows: {len(X_train)}, Valid rows: {len(X_valid)}, Test rows: {len(X_test)}")
+
+    # -------- Train final models on (Train, Valid) and evaluate on Test --------
     model_ffnn = train_ffnn(X_train, y_train, X_valid, y_valid)
-
     evaluate_model(model_ffnn, X_test, y_test, X_train, y_train, X_valid, y_valid)
 
     model_cat = train_catboost(X_train, y_train, X_valid, y_valid)
-
     evaluate_model(model_cat, X_test, y_test, X_train, y_train, X_valid, y_valid)
-
     plot_learning_curves(model_cat)
+
+    # -------- Test reporting: Seen vs Cold-start players ----------------------
+    seen_players = set(train_names.unique())
+    test_seen_mask = test_names.isin(seen_players)
+    test_cold_mask = ~test_seen_mask
+
+    print("\n Test composition:")
+    print(f"  Seen players rows:      {int(test_seen_mask.sum())}")
+    print(f"  Cold-start players rows: {int(test_cold_mask.sum())}")
+
+    def eval_subset(model, X_te, y_te, mask, label: str):
+        n = int(mask.sum())
+        if n == 0:
+            print(f"{label}: no rows.")
+            return
+        # X_te currently lacks name_encoded (dropped above) — good.
+        metrics = evaluate_model(model, X_te[mask], y_te[mask])
+        print(f"{label}: n={n} | {metrics}")
+
+    print("\n📊 CatBoost — Seen vs Cold-start:")
+    eval_subset(model_cat, X_test, y_test, test_seen_mask, "TEST (seen players)")
+    eval_subset(model_cat, X_test, y_test, test_cold_mask, "TEST (cold-start players)")
+
+    print("\n📊 FFNN — Seen vs Cold-start:")
+    eval_subset(model_ffnn, X_test, y_test, test_seen_mask, "TEST (seen players)")
+    eval_subset(model_ffnn, X_test, y_test, test_cold_mask, "TEST (cold-start players)")
 
 if __name__ == "__main__":
     main()
