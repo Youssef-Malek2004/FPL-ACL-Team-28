@@ -165,7 +165,7 @@ def main():
         if n == 0:
             print(f"{label}: no rows.")
             return
-        # X_te currently lacks name_encoded (dropped above) — good.
+
         metrics = evaluate_model(model, X_te[mask], y_te[mask])
         print(f"{label}: n={n} | {metrics}")
 
