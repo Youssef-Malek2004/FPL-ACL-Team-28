@@ -12,7 +12,9 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from scripts.data_cleaning import drop_columns_save_interim, normalize_position_column
-from scripts.feature_engineering import label_encode_column, one_hot_encode_columns, map_bool_to_int, add_form_and_save_interim_df_rawschema
+from scripts.feature_engineering import (label_encode_column, one_hot_encode_columns,
+                                         map_bool_to_int, add_form, add_team_and_opponent_goals,
+                                         add_lag_features)
 
 # Defaults
 DEFAULT_INPUT_REL = os.path.join("data", "raw", "cleaned_merged_seasons.csv")
@@ -43,10 +45,14 @@ def main():
 
     df = pd.read_csv(input_path)
 
+    df = add_team_and_opponent_goals(df)
+
     cols_to_drop = [
         "selected", "transfers_in", "transfers_out",
         "transfers_balance", "value", "GW", 'element',
-        'fixture', 'kickoff_time', 'opponent_team'
+        'fixture', 'kickoff_time', 'opponent_team', 'team_a_score',
+        'team_h_score', 'influence', 'opp_team_name', 'own_goals', 'creativity',
+        'threat', 'team_x'
     ]
 
     df_cleaned = drop_columns_save_interim(df, cols_to_drop, filename=args.filename)
@@ -67,10 +73,20 @@ def main():
 
     df_mapped = map_bool_to_int(df_one_hot_encoded, cols_to_map_to_int)
 
-    df_with_form = add_form_and_save_interim_df_rawschema(df_mapped)
+    df_with_form = add_form(df_mapped)
 
-    print(df_with_form.columns)
-    print(df_with_form.head())
+    cols_to_add_lag = [
+        'assists', 'bonus', 'bps', 'clean_sheets',
+        'goals_conceded', 'goals_scored', 'ict_index',
+        'minutes', 'saves', 'yellow_cards', 'ally_goals', 'opponent_goals',
+        'form'
+    ]
+
+    df_with_lagged_features = add_lag_features(df_with_form, cols_to_add_lag)
+
+    print(df_with_lagged_features.columns)
+    print(df_with_lagged_features.columns.value_counts().count())
+    print(df_with_lagged_features.head())
 
 if __name__ == "__main__":
     main()
