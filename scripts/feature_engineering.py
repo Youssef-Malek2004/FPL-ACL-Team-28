@@ -98,3 +98,48 @@ def label_encode_column(
 
     return df, le
 
+def map_bool_to_int(
+    df: pd.DataFrame,
+    columns_to_map: list,
+    filename: str = "dataset",
+    output_subdir: str = "interim",
+    drop_first: bool = True,
+) -> pd.DataFrame:
+    """
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame containing categorical columns.
+    columns_to_map : list
+        List of column names to map to int.
+    filename : str, optional
+        Base name for saved CSVs (default is 'dataset').
+    output_subdir : str, optional
+        Folder under /data where outputs will be saved (default is 'interim').
+    drop_first : bool, optional
+        Whether to drop the first level of each encoded variable
+        (useful for regression models to avoid dummy-variable trap).
+
+    Returns
+    -------
+    pd.DataFrame
+        The transformed DataFrame with mapped columns.
+    """
+
+    # --- Setup directories ---
+    root_data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
+    output_folder = os.path.join(root_data_dir, output_subdir)
+    os.makedirs(output_folder, exist_ok=True)
+
+    # --- Map bool values to int ---
+    mapped_df = df.copy()
+    for col in columns_to_map:
+        mapped_df[col] = mapped_df[col].map(lambda x: 1 if str(x) == "True" else 0)
+
+    # --- Save outputs ---
+    mapped_path = os.path.join(output_folder, f"{filename}_mapped.csv")
+
+    mapped_df.to_csv(mapped_path, index=False)
+
+    return mapped_df
+
