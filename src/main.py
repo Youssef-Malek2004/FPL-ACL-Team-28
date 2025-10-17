@@ -15,6 +15,7 @@ from scripts.model_training import (train_ffnn, build_xy, train_catboost,
                                     evaluate_model, auto_global_temporal_split,
                                     auto_global_temporal_split_inseason)
 from scripts.data_visualization import plot_learning_curves, summarize_round_splits
+from sklearn.model_selection import train_test_split
 from scripts.data_cleaning import drop_columns_save_interim, normalize_position_column
 from scripts.feature_engineering import (label_encode_column, one_hot_encode_columns,
                                          map_bool_to_int, add_form, add_team_and_opponent_goals,
