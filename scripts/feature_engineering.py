@@ -191,3 +191,100 @@ def add_form(
     print(f"Form-added file saved to: {out_path}")
 
     return out
+
+def add_team_and_opponent_goals(
+    df: pd.DataFrame,
+    filename: str = "dataset",
+    output_subdir: str = "interim",
+) -> pd.DataFrame:
+    """
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame containing categorical columns.
+    filename : str, optional
+        Base name for saved CSVs (default is 'dataset').
+    output_subdir : str, optional
+        Folder under /data where outputs will be saved (default is 'interim').
+
+    Returns
+    -------
+    pd.DataFrame
+        The transformed DataFrame with added features columns.
+    """
+
+    # --- Setup directories ---
+    root_data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
+    output_folder = os.path.join(root_data_dir, output_subdir)
+    os.makedirs(output_folder, exist_ok=True)
+
+    # --- Add Features ---
+    df_with_features = df.copy()
+
+    df_with_features['ally_goals'] = df_with_features.apply(
+        lambda x: x['team_h_score'] if x['was_home'] == True else x['team_a_score'],
+        axis=1
+    )
+
+    df_with_features['opponent_goals'] = df_with_features.apply(
+        lambda x: x['team_a_score'] if x['was_home'] == True else x['team_h_score'],
+        axis=1
+    )
+
+    # --- Save outputs ---
+    mapped_path = os.path.join(output_folder, f"{filename}_mapped.csv")
+    df_with_features.to_csv(mapped_path, index=False)
+
+    return df_with_features
+
+import pandas as pd
+import os
+
+def add_lag_features(
+    df: pd.DataFrame,
+    columns: list[str],
+    lags: list[int] = [1, 2],
+    filename: str = "dataset",
+    output_subdir: str = "interim"
+) -> pd.DataFrame:
+    """
+    Adds lag features (e.g., lag 1 and lag 2) for specified columns.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame, typically time-sorted.
+    columns : list of str
+        Columns to generate lag features for.
+    lags : list of int, optional
+        Lag steps to apply (default is [1, 2]).
+    filename : str, optional
+        Base name for saved CSV (default is 'dataset').
+    output_subdir : str, optional
+        Folder under /data where output is saved (default is 'interim').
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with new lag columns added.
+    """
+    # --- Setup directories ---
+    root_data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
+    output_folder = os.path.join(root_data_dir, output_subdir)
+    os.makedirs(output_folder, exist_ok=True)
+
+    # --- Add lag features ---
+    df_with_lags = df.copy()
+    for col in columns:
+        if col not in df.columns:
+            print(f"⚠️ Skipping '{col}' — not found in DataFrame.")
+            continue
+        for lag in lags:
+            df_with_lags[f"{col}_lag{lag}"] = df_with_lags[col].shift(lag)
+
+    # --- Save outputs ---
+    lagged_path = os.path.join(output_folder, f"{filename}_lagged.csv")
+    df_with_lags.to_csv(lagged_path, index=False)
+
+    return df_with_lags
+
