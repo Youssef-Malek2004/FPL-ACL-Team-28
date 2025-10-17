@@ -143,3 +143,51 @@ def map_bool_to_int(
 
     return mapped_df
 
+
+def add_form_and_save_interim_df_rawschema(
+    df: pd.DataFrame,
+    filename: str = "form added",      # -> ../data/interim/form added.csv
+    output_subdir: str = "interim",
+    window: int = 4,                   # look back up to 4 previous GWs
+    divisor: float = 10.0,             # divide by 10 per spec
+    min_periods: int = 1,              # "if available": allow <4 previous GWs
+    fill_strategy: str = "none",       # "none" keeps NaN; "zero" fills with 0.0
+) -> pd.DataFrame:
+    """
+    Adds 'form' for each (name, season_x) as the average of the PREVIOUS `window`
+    gameweeks' total_points, divided by `divisor`, using up to `min_periods` available
+    past GWs (no leakage). Saves to ../data/<output_subdir>/<filename>.csv.
+
+    Expects columns: ['name', 'season_x', 'round', 'total_points'] exactly.
+    """
+    required = ["name", "season_x", "round", "total_points"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
+
+    out = df.copy()
+    out["round"] = pd.to_numeric(out["round"], errors="coerce")
+    out = out.sort_values(["name", "season_x", "round"])
+
+    # Compute rolling mean of *previous* points (shift(1) prevents look-ahead)
+    form = (
+        out.groupby(["name", "season_x"])["total_points"]
+           .apply(lambda s: s.shift(1).rolling(window, min_periods=min_periods).mean() / divisor)
+           .reset_index(level=[0, 1], drop=True)
+    )
+
+    if fill_strategy == "zero":
+        form = form.fillna(0.0)
+
+    out["form"] = form
+
+    # Save under ../data/<output_subdir>/ relative to this file
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.abspath(os.path.join(script_dir, "..", "data", output_subdir))
+    os.makedirs(data_dir, exist_ok=True)
+
+    out_path = os.path.join(data_dir, f"{filename}.csv")
+    out.to_csv(out_path, index=False)
+    print(f"Form-added file saved to: {out_path}")
+
+    return out
