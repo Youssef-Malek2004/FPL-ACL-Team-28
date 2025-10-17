@@ -11,6 +11,9 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+import numpy as np
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from scripts.data_cleaning import drop_columns_save_interim, normalize_position_column
 from scripts.feature_engineering import (label_encode_column, one_hot_encode_columns,
@@ -91,11 +94,24 @@ def main():
 
     df_with_target = add_upcoming_total_points(df_with_lagged_features)
 
+    df_with_target = df_with_target.dropna()
+
     X, y = build_xy(df_with_target)
 
     X = X.drop(columns=['total_points'])
 
-    X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.2, shuffle=False)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    # --- Apply PCA ---
+    # Keep enough components to explain 95% of variance
+    pca = PCA(n_components=0.98, random_state=42)
+    X_pca = pca.fit_transform(X_scaled)
+
+    print(f"✅ PCA reduced from {X.shape[1]} → {X_pca.shape[1]} components "
+          f"({np.sum(pca.explained_variance_ratio_) * 100:.2f}% variance retained)")
+
+    X_train, X_temp, y_train, y_temp = train_test_split(X_pca, y, test_size=0.2, shuffle=False)
 
     X_valid, X_test, y_valid, y_test = train_test_split(X_temp, y_temp, test_size=0.6, shuffle=False)
 
