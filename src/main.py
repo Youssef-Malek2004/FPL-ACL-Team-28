@@ -106,6 +106,5 @@ def main():
 
     plot_learning_curves(model)
 
-
 if __name__ == "__main__":
     main()
