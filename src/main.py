@@ -11,6 +11,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+from scripts.data_visualization import plot_learning_curves
 from sklearn.model_selection import train_test_split
 from scripts.data_cleaning import drop_columns_save_interim, normalize_position_column
 from scripts.feature_engineering import (label_encode_column, one_hot_encode_columns,
@@ -98,11 +99,14 @@ def main():
 
     X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.2, shuffle=False)
 
-    X_valid, X_test, y_valid, y_test = train_test_split(X_temp, y_temp, test_size=0.6, shuffle=False)
+    X_valid, X_test, y_valid, y_test = train_test_split(X_temp, y_temp, test_size=0.5, shuffle=False)
 
     model = train_ffnn(X_train, y_train, X_valid, y_valid)
 
-    evaluate_model(model, X_test, y_test)
+    evaluate_model(model, X_test, y_test, X_train, y_train, X_valid, y_valid)
+
+    plot_learning_curves(model)
+
 
 if __name__ == "__main__":
     main()
