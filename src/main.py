@@ -53,7 +53,7 @@ def main():
 
     cols_to_drop = [
         "selected", "transfers_in", "transfers_out",
-        "transfers_balance", "value", "GW", 'element',
+        "transfers_balance", "GW", 'element',
         'fixture', 'kickoff_time', 'opponent_team', 'team_a_score',
         'team_h_score', 'influence', 'opp_team_name', 'own_goals', 'creativity',
         'threat', 'team_x'
