@@ -11,14 +11,14 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+from scripts.model_training import train_ffnn, build_xy,train_catboost, evaluate_model
 from scripts.data_visualization import plot_learning_curves
 from sklearn.model_selection import train_test_split
 from scripts.data_cleaning import drop_columns_save_interim, normalize_position_column
 from scripts.feature_engineering import (label_encode_column, one_hot_encode_columns,
                                          map_bool_to_int, add_form, add_team_and_opponent_goals,
-                                         add_lag_features, add_upcoming_total_points, build_xy,
-                                         train_catboost, evaluate_model)
-from scripts.model_training import train_ffnn, grid_search_ffnn
+                                         add_lag_features, add_upcoming_total_points)
+
 
 # Defaults
 DEFAULT_INPUT_REL = os.path.join("data", "raw", "cleaned_merged_seasons.csv")
@@ -101,11 +101,15 @@ def main():
 
     X_valid, X_test, y_valid, y_test = train_test_split(X_temp, y_temp, test_size=0.5, shuffle=False)
 
-    model = train_ffnn(X_train, y_train, X_valid, y_valid)
+    model_ffnn = train_ffnn(X_train, y_train, X_valid, y_valid)
 
-    evaluate_model(model, X_test, y_test, X_train, y_train, X_valid, y_valid)
+    evaluate_model(model_ffnn, X_test, y_test, X_train, y_train, X_valid, y_valid)
 
-    plot_learning_curves(model)
+    model_cat = train_catboost(X_train, y_train, X_valid, y_valid)
+
+    evaluate_model(model_cat, X_test, y_test, X_train, y_train, X_valid, y_valid)
+
+    plot_learning_curves(model_cat)
 
 if __name__ == "__main__":
     main()

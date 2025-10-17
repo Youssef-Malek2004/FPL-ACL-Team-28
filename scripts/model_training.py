@@ -1,121 +1,10 @@
-# ---- FFNN: drop-in replacement for CatBoost ----
-import numpy as np
-from dataclasses import dataclass
-from typing import Optional, Tuple, Iterable
-
-from sklearn.preprocessing import StandardScaler
-
-# TensorFlow / Keras
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers, callbacks, regularizers
-
-
-
-import pandas as pd
+from tf_models.FFNNRegressorModel import FFNNRegressor
+from typing import List, Tuple, Optional, Dict, Any
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from catboost import CatBoostRegressor, Pool
 from itertools import product
-from typing import Dict, List, Tuple, Any
-
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-
-
-def _set_seed(seed: int = 42):
-    np.random.seed(seed)
-    tf.random.set_seed(seed)
-
-
-def _build_ffnn(input_dim: int,
-                hidden_units: Iterable[int] = (256, 128, 64),
-                dropout: float = 0.10,
-                l2: float = 1e-4,
-                lr: float = 1e-3) -> keras.Model:
-    reg = regularizers.l2(l2) if l2 and l2 > 0 else None
-    model = keras.Sequential(name="ffnn_regressor")
-    model.add(layers.Input(shape=(input_dim,)))
-    for h in hidden_units:
-        model.add(layers.Dense(h, activation="relu", kernel_regularizer=reg))
-        if dropout and dropout > 0:
-            model.add(layers.Dropout(dropout))
-    model.add(layers.Dense(1, activation="linear"))
-    model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=lr),
-        loss="mse",
-        metrics=[keras.metrics.RootMeanSquaredError(name="rmse"),
-                 keras.metrics.MeanAbsoluteError(name="mae")]
-    )
-    return model
-
-
-@dataclass
-class FFNNRegressor:
-    # Hyperparams
-    hidden_units: Tuple[int, ...] = (256, 128, 64)
-    dropout: float = 0.10
-    l2: float = 1e-4
-    lr: float = 1e-3
-    epochs: int = 500
-    batch_size: int = 1024
-    patience: int = 30
-    seed: int = 42
-    verbose: int = 1
-
-    # Fitted artifacts
-    scaler: Optional[StandardScaler] = None
-    model: Optional[keras.Model] = None
-
-    def fit(self,
-            X_train: np.ndarray, y_train: np.ndarray,
-            X_valid: np.ndarray, y_valid: np.ndarray):
-        _set_seed(self.seed)
-
-        # Ensure numeric arrays + handle NaNs/Infs
-        X_train = np.nan_to_num(np.asarray(X_train, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
-        X_valid = np.nan_to_num(np.asarray(X_valid, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
-        y_train = np.asarray(y_train, dtype=np.float32).reshape(-1, 1)
-        y_valid = np.asarray(y_valid, dtype=np.float32).reshape(-1, 1)
-
-        # Scale inputs
-        self.scaler = StandardScaler()
-        X_train_s = self.scaler.fit_transform(X_train)
-        X_valid_s = self.scaler.transform(X_valid)
-
-        # Build & train
-        self.model = _build_ffnn(
-            input_dim=X_train_s.shape[1],
-            hidden_units=self.hidden_units,
-            dropout=self.dropout,
-            l2=self.l2,
-            lr=self.lr,
-        )
-
-        cbs = [
-            callbacks.EarlyStopping(
-                monitor="val_rmse", mode="min",
-                patience=self.patience, restore_best_weights=True
-            ),
-            callbacks.ReduceLROnPlateau(
-                monitor="val_rmse", mode="min",
-                factor=0.5, patience=max(5, self.patience // 3),
-                min_lr=1e-6, verbose=1 if self.verbose else 0
-            )
-        ]
-
-        self.model.fit(
-            X_train_s, y_train,
-            validation_data=(X_valid_s, y_valid),
-            epochs=self.epochs,
-            batch_size=self.batch_size,
-            verbose=self.verbose,
-            callbacks=cbs,
-            shuffle=True
-        )
-        return self
-
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        X = np.nan_to_num(np.asarray(X, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
-        X_s = self.scaler.transform(X)
-        preds = self.model.predict(X_s, verbose=0).reshape(-1)
-        return preds
+import pandas as pd
+import numpy as np
 
 
 def train_ffnn(
@@ -187,6 +76,94 @@ def grid_search_ffnn(
         print(leaderboard.head(5))
 
     return best["model"], best["params"], leaderboard
+
+def build_xy(
+    df: pd.DataFrame,
+    target_col: str = "upcoming_total_points",
+    drop_cols: Optional[List[str]] = None
+) -> Tuple[pd.DataFrame, pd.Series]:
+    """
+    Separates features (X) and target (y).
+    """
+    if drop_cols is None:
+        drop_cols = ["season_x", "round", "name_encoded"]  # avoid data leakage
+
+    feature_cols = [c for c in df.columns if c not in drop_cols + [target_col]]
+    X = df[feature_cols]
+    y = df[target_col]
+    return X, y
+
+def train_catboost(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_valid: pd.DataFrame,
+    y_valid: pd.Series,
+    cat_features: Optional[List[str]] = None,
+    params: Optional[dict] = None,
+):
+    """
+    Initializes and trains a CatBoostRegressor model.
+    """
+    if params is None:
+        params = {
+            "iterations": 1000,
+            "learning_rate": 0.05,
+            "depth": 8,
+            "l2_leaf_reg": 6.0,
+            "loss_function": "RMSE",
+            "eval_metric": "RMSE",
+            "random_seed": 42,
+            "early_stopping_rounds": 50,
+            "verbose": 200,
+
+            # Regularization via randomness/subsampling
+            "subsample": 0.8,  # row sampling
+            "rsm": 0.8,  # feature sampling per split
+            "random_strength": 1.5,  # adds noise to splits → less overfit
+            "bagging_temperature": 0.5,  # softer sampling
+        }
+
+    train_pool = Pool(X_train, y_train, cat_features=cat_features)
+    valid_pool = Pool(X_valid, y_valid, cat_features=cat_features)
+
+    model = CatBoostRegressor(**params)
+    model.fit(train_pool, eval_set=valid_pool)
+    return model
+
+def evaluate_model(
+    model,
+    X_test: pd.DataFrame, y_test: pd.Series,
+    X_train: pd.DataFrame = None, y_train: pd.Series = None,
+    X_valid: pd.DataFrame = None, y_valid: pd.Series = None,
+) -> dict:
+    def _metrics(y_true, y_pred):
+        mae = mean_absolute_error(y_true, y_pred)
+        mse = mean_squared_error(y_true, y_pred)
+        rmse = np.sqrt(mse)
+        r2 = r2_score(y_true, y_pred)
+        return {"MAE": mae, "MSE": mse, "RMSE": rmse, "R2": r2}
+
+    report = {}
+
+    if X_train is not None and y_train is not None:
+        preds_tr = model.predict(X_train)
+        report["train"] = _metrics(y_train, preds_tr)
+
+    if X_valid is not None and y_valid is not None:
+        preds_val = model.predict(X_valid)
+        report["valid"] = _metrics(y_valid, preds_val)
+
+    preds_te = model.predict(X_test)
+    report["test"] = _metrics(y_test, preds_te)
+
+    # Pretty print
+    print("\n📊 Evaluation Metrics:")
+    for split in ["train", "valid", "test"]:
+        if split in report:
+            m = report[split]
+            print(f"  {split.upper()}:  MAE={m['MAE']:.4f}  RMSE={m['RMSE']:.4f}  R2={m['R2']:.4f}")
+
+    return report
 
 
 
