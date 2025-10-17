@@ -17,6 +17,7 @@ from scripts.feature_engineering import (label_encode_column, one_hot_encode_col
                                          map_bool_to_int, add_form, add_team_and_opponent_goals,
                                          add_lag_features, add_upcoming_total_points, build_xy,
                                          train_catboost, evaluate_model)
+from scripts.model_training import train_ffnn, grid_search_ffnn
 
 # Defaults
 DEFAULT_INPUT_REL = os.path.join("data", "raw", "cleaned_merged_seasons.csv")
@@ -99,7 +100,7 @@ def main():
 
     X_valid, X_test, y_valid, y_test = train_test_split(X_temp, y_temp, test_size=0.6, shuffle=False)
 
-    model = train_catboost(X_train, y_train, X_valid, y_valid)
+    model = train_ffnn(X_train, y_train, X_valid, y_valid)
 
     evaluate_model(model, X_test, y_test)
 
