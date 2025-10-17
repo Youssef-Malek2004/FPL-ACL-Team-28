@@ -12,7 +12,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from scripts.data_cleaning import drop_columns_save_interim, normalize_position_column
-from scripts.feature_engineering import label_encode_column, one_hot_encode_columns
+from scripts.feature_engineering import label_encode_column, one_hot_encode_columns, map_bool_to_int
 
 # Defaults
 DEFAULT_INPUT_REL = os.path.join("data", "raw", "cleaned_merged_seasons.csv")
@@ -61,7 +61,13 @@ def main():
 
     df_one_hot_encoded = one_hot_encode_columns(df_label_encoded, cols_to_one_hot_encode)
 
-    print(df_one_hot_encoded.columns)
+    cols_to_map_to_int = [
+        'was_home', 'position_FWD', 'position_MID', 'position_GK',
+    ]
+
+    df_mapped = map_bool_to_int(df_one_hot_encoded, cols_to_map_to_int)
+
+    print(df_mapped.columns)
 
 if __name__ == "__main__":
     main()
