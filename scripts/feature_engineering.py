@@ -1,6 +1,10 @@
 import os
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
+import numpy as np
+from typing import List, Tuple, Optional
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from catboost import CatBoostRegressor, Pool
 
 
 def one_hot_encode_columns(
@@ -103,7 +107,6 @@ def map_bool_to_int(
     columns_to_map: list,
     filename: str = "dataset",
     output_subdir: str = "interim",
-    drop_first: bool = True,
 ) -> pd.DataFrame:
     """
     Parameters
@@ -116,9 +119,6 @@ def map_bool_to_int(
         Base name for saved CSVs (default is 'dataset').
     output_subdir : str, optional
         Folder under /data where outputs will be saved (default is 'interim').
-    drop_first : bool, optional
-        Whether to drop the first level of each encoded variable
-        (useful for regression models to avoid dummy-variable trap).
 
     Returns
     -------
@@ -277,7 +277,7 @@ def add_lag_features(
     df_with_lags = df.copy()
     for col in columns:
         if col not in df.columns:
-            print(f"⚠️ Skipping '{col}' — not found in DataFrame.")
+            print(f"Skipping '{col}' — not found in DataFrame.")
             continue
         for lag in lags:
             df_with_lags[f"{col}_lag{lag}"] = df_with_lags[col].shift(lag)
@@ -288,3 +288,89 @@ def add_lag_features(
 
     return df_with_lags
 
+def add_upcoming_total_points(
+    df: pd.DataFrame,
+    player_col: str = "name_encoded",
+    season_col: str = "season_x",
+    week_col: str = "round",
+    points_col: str = "total_points",
+) -> pd.DataFrame:
+    """
+    Adds a new column `upcoming_total_points` representing next week's points
+    for each player-season, shifted by -1 in chronological order.
+    """
+    df_sorted = df.sort_values([player_col, season_col, week_col])
+    df_sorted["upcoming_total_points"] = (
+        df_sorted.groupby([player_col, season_col])[points_col].shift(-1)
+    )
+    df_sorted = df_sorted.dropna(subset=["upcoming_total_points"]).reset_index(drop=True)
+    return df_sorted
+
+def build_xy(
+    df: pd.DataFrame,
+    target_col: str = "upcoming_total_points",
+    drop_cols: Optional[List[str]] = None
+) -> Tuple[pd.DataFrame, pd.Series]:
+    """
+    Separates features (X) and target (y).
+    """
+    if drop_cols is None:
+        drop_cols = ["season_x", "round", "name_encoded"]  # avoid data leakage
+
+    feature_cols = [c for c in df.columns if c not in drop_cols + [target_col]]
+    X = df[feature_cols]
+    y = df[target_col]
+    return X, y
+
+def train_catboost(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_valid: pd.DataFrame,
+    y_valid: pd.Series,
+    cat_features: Optional[List[str]] = None,
+    params: Optional[dict] = None,
+):
+    """
+    Initializes and trains a CatBoostRegressor model.
+    """
+    if params is None:
+        params = {
+            "iterations": 1000,
+            "learning_rate": 0.05,
+            "depth": 8,
+            "loss_function": "RMSE",
+            "eval_metric": "RMSE",
+            "random_seed": 42,
+            "early_stopping_rounds": 50,
+            "verbose": 200
+        }
+
+    train_pool = Pool(X_train, y_train, cat_features=cat_features)
+    valid_pool = Pool(X_valid, y_valid, cat_features=cat_features)
+
+    model = CatBoostRegressor(**params)
+    model.fit(train_pool, eval_set=valid_pool)
+    return model
+
+def evaluate_model(model, X_test: pd.DataFrame, y_test: pd.Series) -> dict:
+    """
+    Evaluates CatBoost model performance using regression metrics.
+    """
+    preds = model.predict(X_test)
+    mae = mean_absolute_error(y_test, preds)
+    mse = mean_squared_error(y_test, preds)
+    rmse = np.sqrt(mse)
+    r2 = r2_score(y_test, preds)
+
+    metrics = {
+        "MAE": mae,
+        "MSE": mse,
+        "RMSE": rmse,
+        "R2": r2
+    }
+
+    print("\n📊 Evaluation Metrics:")
+    for k, v in metrics.items():
+        print(f"{k}: {v:.4f}")
+
+    return metrics
