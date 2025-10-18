@@ -88,7 +88,7 @@ def summarize_round_splits(
     summary = pd.DataFrame(rows).sort_values("season").reset_index(drop=True)
 
     # Pretty print
-    print("\n🧭 Round allocation by season (min–max rounds per subset):")
+    print("\nRound allocation by season (min–max rounds per subset):")
     for _, r in summary.iterrows():
         print(
             f"  {r['season']}: "

@@ -130,12 +130,10 @@ def main():
     X_valid, y_valid = X.loc[valid_idx].copy(), y.loc[valid_idx].copy()
     X_test, y_test = X.loc[test_idx].copy(), y.loc[test_idx].copy()
 
-    # --- Keep a copy of name_encoded for masks BEFORE dropping it from features ---
     train_names = X_train["name_encoded"].copy()
     _ = X_valid["name_encoded"].copy()
     test_names = X_test["name_encoded"].copy()
 
-    # --- Drop player id from model inputs (FFNN & CatBoost here use same X) ---
     X_train = X_train.drop(columns=["name_encoded"], errors="ignore")
     X_valid = X_valid.drop(columns=["name_encoded"], errors="ignore")
     X_test = X_test.drop(columns=["name_encoded"], errors="ignore")
@@ -169,11 +167,11 @@ def main():
         metrics = evaluate_model(model, X_te[mask], y_te[mask])
         print(f"{label}: n={n} | {metrics}")
 
-    print("\n📊 CatBoost — Seen vs Cold-start:")
+    print("\nCatBoost — Seen vs Cold-start:")
     eval_subset(model_cat, X_test, y_test, test_seen_mask, "TEST (seen players)")
     eval_subset(model_cat, X_test, y_test, test_cold_mask, "TEST (cold-start players)")
 
-    print("\n📊 FFNN — Seen vs Cold-start:")
+    print("\nFFNN — Seen vs Cold-start:")
     eval_subset(model_ffnn, X_test, y_test, test_seen_mask, "TEST (seen players)")
     eval_subset(model_ffnn, X_test, y_test, test_cold_mask, "TEST (cold-start players)")
 

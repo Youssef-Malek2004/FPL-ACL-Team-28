@@ -42,7 +42,7 @@ def _build_ffnn(input_dim: int,
 @dataclass
 class FFNNRegressor:
     # Hyperparams
-    hidden_units: Tuple[int, ...] = (256, 128, 64)
+    hidden_units: Tuple[int, ...] = (512, 256, 128, 64, 32, 16)
     dropout: float = 0.10
     l2: float = 1e-4
     lr: float = 1e-3
