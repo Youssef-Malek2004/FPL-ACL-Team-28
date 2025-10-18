@@ -93,87 +93,107 @@ def main():
 
     df_with_target = add_upcoming_total_points(df_with_lagged_features)
 
-    X, y = build_xy(df_with_target, keep_player_id=True, player_col="name_encoded")
+    # -------- Train separate models per position --------
+    def make_pos_masks(df):
+        # DEF is "all zeros" in the 3 one-hot columns
+        base_cols = ['position_GK', 'position_MID', 'position_FWD']
+        is_def = (df[base_cols].sum(axis=1) == 0)
+        return {
+            'GK': df['position_GK'] == 1,
+            'MID': df['position_MID'] == 1,
+            'FWD': df['position_FWD'] == 1,
+            'DEF': is_def
+        }
 
-    X = X.drop(columns=['total_points'])
+    pos_masks = make_pos_masks(df_with_target)
 
-    # Without inter-season splits
-    # train_idx, valid_idx, test_idx, years_sorted = auto_global_temporal_split(
-    #     df_with_target,
-    #     season_col="season_x",
-    #     week_col="round",
-    #     train_frac=0.8,
-    #     valid_frac=0.2,
-    #     test_frac=0.2
-    # )
+    # helpful to drop constant position flags inside each subset
+    POS_OHE_COLS = ['position_GK', 'position_MID', 'position_FWD']
 
-    # With inter-season splits
-    train_idx, valid_idx, test_idx, years_sorted = auto_global_temporal_split_inseason(
-        df_with_target,
-        season_col="season_x",
-        week_col="round",
-        train_frac=0.8, valid_frac=0.1, test_frac=0.1,
-        split_train_valid=True, ratio_train_valid=0.8,
-        split_valid_test=True, ratio_valid_test=0.5,
-    )
+    all_models = {}
 
-    _ = summarize_round_splits(
-        df=df_with_target,
-        train_idx=train_idx,
-        valid_idx=valid_idx,
-        test_idx=test_idx,
-        season_col="season_x",
-        week_col="round",
-    )
+    for pos, mask in pos_masks.items():
+        df_pos = df_with_target.loc[mask].copy()
+        if df_pos.empty:
+            print(f"[{pos}] No rows, skipping.")
+            continue
 
-    X_train, y_train = X.loc[train_idx].copy(), y.loc[train_idx].copy()
-    X_valid, y_valid = X.loc[valid_idx].copy(), y.loc[valid_idx].copy()
-    X_test, y_test = X.loc[test_idx].copy(), y.loc[test_idx].copy()
+        # Build features/target for THIS position only
+        # build features/target for this position
+        Xp, yp = build_xy(df_pos, keep_player_id=True, player_col="name_encoded")
 
-    train_names = X_train["name_encoded"].copy()
-    _ = X_valid["name_encoded"].copy()
-    test_names = X_test["name_encoded"].copy()
+        # IMPORTANT: ensure Xp/yp carry df_pos labels (if build_xy reset them)
+        # If build_xy preserved the original index, the next two lines are harmless.
+        Xp.index = df_pos.index
+        yp.index = df_pos.index
 
-    X_train = X_train.drop(columns=["name_encoded"], errors="ignore")
-    X_valid = X_valid.drop(columns=["name_encoded"], errors="ignore")
-    X_test = X_test.drop(columns=["name_encoded"], errors="ignore")
+        # temporal split on df_pos -> returns LABEL indices (df_pos.index)
+        train_idx, valid_idx, test_idx, years_sorted = auto_global_temporal_split_inseason(
+            df_pos,
+            season_col="season_x",
+            week_col="round",
+            train_frac=0.8, valid_frac=0.1, test_frac=0.1,
+            split_train_valid=True, ratio_train_valid=0.8,
+            split_valid_test=True, ratio_valid_test=0.5,
+        )
 
-    print(f"Seasons by start year (chronological): {years_sorted}")
-    print(f"Train rows: {len(X_train)}, Valid rows: {len(X_valid)}, Test rows: {len(X_test)}")
+        # Intersect with Xp/yp indices in case build_xy dropped rows
+        train_idx = [i for i in train_idx if i in Xp.index]
+        valid_idx = [i for i in valid_idx if i in Xp.index]
+        test_idx = [i for i in test_idx if i in Xp.index]
 
-    # -------- Train final models on (Train, Valid) and evaluate on Test --------
-    model_ffnn = train_ffnn(X_train, y_train, X_valid, y_valid)
-    evaluate_model(model_ffnn, X_test, y_test, X_train, y_train, X_valid, y_valid)
+        # >>> Use .loc (label-based), NOT .iloc
+        X_train, y_train = Xp.loc[train_idx].copy(), yp.loc[train_idx].copy()
+        X_valid, y_valid = Xp.loc[valid_idx].copy(), yp.loc[valid_idx].copy()
+        X_test, y_test = Xp.loc[test_idx].copy(), yp.loc[test_idx].copy()
 
-    model_cat = train_catboost(X_train, y_train, X_valid, y_valid)
-    evaluate_model(model_cat, X_test, y_test, X_train, y_train, X_valid, y_valid)
-    plot_learning_curves(model_cat)
+        train_names = X_train["name_encoded"].copy() if "name_encoded" in X_train else None
+        test_names = X_test["name_encoded"].copy() if "name_encoded" in X_test else None
 
-    # -------- Test reporting: Seen vs Cold-start players ----------------------
-    seen_players = set(train_names.unique())
-    test_seen_mask = test_names.isin(seen_players)
-    test_cold_mask = ~test_seen_mask
+        print(f"\n[{pos}] Seasons: {years_sorted}")
+        print(f"[{pos}] Train={len(X_train)}  Valid={len(X_valid)}  Test={len(X_test)}")
 
-    print("\n Test composition:")
-    print(f"  Seen players rows:      {int(test_seen_mask.sum())}")
-    print(f"  Cold-start players rows: {int(test_cold_mask.sum())}")
+        # ---- Train & evaluate (CatBoost + FFNN) ----
+        model_ffnn = train_ffnn(X_train, y_train, X_valid, y_valid)
+        print(f"\n[{pos}] FFNN metrics on TEST:")
+        evaluate_model(model_ffnn, X_test, y_test, X_train, y_train, X_valid, y_valid)
 
-    def eval_subset(model, X_te, y_te, mask, label: str):
-        n = int(mask.sum())
-        if n == 0:
-            print(f"{label}: no rows.")
-            return
+        model_cat = train_catboost(X_train, y_train, X_valid, y_valid)
+        print(f"\n[{pos}] CatBoost metrics on TEST:")
+        evaluate_model(model_cat, X_test, y_test, X_train, y_train, X_valid, y_valid)
 
-        metrics = evaluate_model(model, X_te[mask], y_te[mask])
-        print(f"{label}: n={n} | {metrics}")
+        # Optional: learning curves for CatBoost per position
+        plot_learning_curves(model_cat)
 
-    print("\nCatBoost — Seen vs Cold-start:")
-    eval_subset(model_cat, X_test, y_test, test_seen_mask, "TEST (seen players)")
-    eval_subset(model_cat, X_test, y_test, test_cold_mask, "TEST (cold-start players)")
+        # ---- Seen vs Cold-start within this position ----
+        if train_names is not None and test_names is not None:
+            seen_players = set(train_names.unique())
+            test_seen_mask = test_names.isin(seen_players)
+            test_cold_mask = ~test_seen_mask
 
-    print("\nFFNN — Seen vs Cold-start:")
-    eval_subset(model_ffnn, X_test, y_test, test_seen_mask, "TEST (seen players)")
-    eval_subset(model_ffnn, X_test, y_test, test_cold_mask, "TEST (cold-start players)")
+            print(f"\n[{pos}] Test composition:")
+            print(f"  Seen player rows:      {int(test_seen_mask.sum())}")
+            print(f"  Cold-start player rows: {int(test_cold_mask.sum())}")
+
+            def eval_subset(model, X_te, y_te, mask, label):
+                n = int(mask.sum())
+                if n == 0:
+                    print(f"{label}: no rows.")
+                    return
+                metrics = evaluate_model(model, X_te[mask], y_te[mask])
+                print(f"{label}: n={n} | {metrics}")
+
+            print(f"\n[{pos}] CatBoost — Seen vs Cold-start:")
+            eval_subset(model_cat, X_test, y_test, test_seen_mask, "TEST (seen players)")
+            eval_subset(model_cat, X_test, y_test, test_cold_mask, "TEST (cold-start players)")
+
+            print(f"\n[{pos}] FFNN — Seen vs Cold-start:")
+            eval_subset(model_ffnn, X_test, y_test, test_seen_mask, "TEST (seen players)")
+            eval_subset(model_ffnn, X_test, y_test, test_cold_mask, "TEST (cold-start players)")
+
+        # Keep models if you want to save/use later
+        all_models[pos] = {'ffnn': model_ffnn, 'catboost': model_cat}
+
 
 if __name__ == "__main__":
     main()
