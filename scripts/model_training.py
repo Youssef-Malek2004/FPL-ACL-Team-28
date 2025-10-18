@@ -8,17 +8,22 @@ import pandas as pd
 import numpy as np
 
 
+from tf_models.FFNNRegressorModel import FFNNRegressorWithEmbedding
+
 def train_ffnn(
     X_train, y_train, X_valid, y_valid,
-    params: Optional[dict] = None
+    params: Optional[dict] = None,
+    use_player_embedding: bool = True,          # <— NEW
+    player_id_col: str = "name_encoded",        # <— NEW
+    embedding_dim: int = 32                     # <— NEW
 ):
     """
-    Initializes and trains a feed-forward neural network for regression.
-    Returns a model with a .predict(...) method for compatibility with your evaluate_model().
+    Trains an FFNN. If use_player_embedding=True, expects X_* to contain `player_id_col`
+    and uses a Keras embedding for that column; otherwise trains numeric-only FFNN.
     """
     if params is None:
         params = {
-            "hidden_units": (256, 128, 64,32),
+            "hidden_units": (256, 128, 64, 32),
             "dropout": 0.10,
             "l2": 1e-4,
             "lr": 1e-3,
@@ -28,9 +33,40 @@ def train_ffnn(
             "seed": 42,
             "verbose": 1,
         }
-    model = FFNNRegressor(**params)
+
+    if use_player_embedding:
+        model = FFNNRegressorWithEmbedding(
+            hidden_units=params.get("hidden_units", (256, 128, 64, 32)),
+            dropout=params.get("dropout", 0.10),
+            l2=params.get("l2", 1e-4),
+            lr=params.get("lr", 1e-3),
+            epochs=params.get("epochs", 400),
+            batch_size=params.get("batch_size", 1024),
+            patience=params.get("patience", 25),
+            seed=params.get("seed", 42),
+            verbose=params.get("verbose", 1),
+            player_id_col=player_id_col,
+            embedding_dim=embedding_dim,
+        )
+    else:
+        # Fallback: numeric-only; drop the id column first
+        X_train = X_train.drop(columns=[player_id_col], errors="ignore")
+        X_valid = X_valid.drop(columns=[player_id_col], errors="ignore")
+        model = FFNNRegressor(
+            hidden_units=params.get("hidden_units", (256, 128, 64, 32)),
+            dropout=params.get("dropout", 0.10),
+            l2=params.get("l2", 1e-4),
+            lr=params.get("lr", 1e-3),
+            epochs=params.get("epochs", 400),
+            batch_size=params.get("batch_size", 1024),
+            patience=params.get("patience", 25),
+            seed=params.get("seed", 42),
+            verbose=params.get("verbose", 1),
+        )
+
     model.fit(X_train, y_train, X_valid, y_valid)
     return model
+
 
 
 def grid_search_ffnn(

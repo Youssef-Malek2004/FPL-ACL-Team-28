@@ -136,18 +136,27 @@ def main():
     test_names = X_test["name_encoded"].copy()
 
     # --- Drop player id from model inputs (FFNN & CatBoost here use same X) ---
-    X_train = X_train.drop(columns=["name_encoded"], errors="ignore")
-    X_valid = X_valid.drop(columns=["name_encoded"], errors="ignore")
-    X_test = X_test.drop(columns=["name_encoded"], errors="ignore")
+    # X_train = X_train.drop(columns=["name_encoded"], errors="ignore")
+    # X_valid = X_valid.drop(columns=["name_encoded"], errors="ignore")
+    # X_test = X_test.drop(columns=["name_encoded"], errors="ignore")
+
+    cat_features = []
+    if "name_encoded" in X.columns:
+        cat_features = [X.columns.get_loc("name_encoded")]
 
     print(f"Seasons by start year (chronological): {years_sorted}")
     print(f"Train rows: {len(X_train)}, Valid rows: {len(X_valid)}, Test rows: {len(X_test)}")
 
     # -------- Train final models on (Train, Valid) and evaluate on Test --------
-    model_ffnn = train_ffnn(X_train, y_train, X_valid, y_valid)
+    model_ffnn = train_ffnn(
+        X_train, y_train, X_valid, y_valid,
+        use_player_embedding=True,
+        player_id_col="name_encoded",
+        embedding_dim=2
+    )
     evaluate_model(model_ffnn, X_test, y_test, X_train, y_train, X_valid, y_valid)
 
-    model_cat = train_catboost(X_train, y_train, X_valid, y_valid)
+    model_cat = train_catboost(X_train, y_train, X_valid, y_valid, cat_features=cat_features)
     evaluate_model(model_cat, X_test, y_test, X_train, y_train, X_valid, y_valid)
     plot_learning_curves(model_cat)
 
