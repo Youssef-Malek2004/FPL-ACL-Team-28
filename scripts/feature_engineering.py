@@ -103,7 +103,6 @@ def map_bool_to_int(
     columns_to_map: list,
     filename: str = "dataset",
     output_subdir: str = "interim",
-    drop_first: bool = True,
 ) -> pd.DataFrame:
     """
     Parameters
@@ -116,9 +115,6 @@ def map_bool_to_int(
         Base name for saved CSVs (default is 'dataset').
     output_subdir : str, optional
         Folder under /data where outputs will be saved (default is 'interim').
-    drop_first : bool, optional
-        Whether to drop the first level of each encoded variable
-        (useful for regression models to avoid dummy-variable trap).
 
     Returns
     -------
@@ -277,7 +273,7 @@ def add_lag_features(
     df_with_lags = df.copy()
     for col in columns:
         if col not in df.columns:
-            print(f"⚠️ Skipping '{col}' — not found in DataFrame.")
+            print(f"Skipping '{col}' — not found in DataFrame.")
             continue
         for lag in lags:
             df_with_lags[f"{col}_lag{lag}"] = df_with_lags[col].shift(lag)
@@ -288,3 +284,27 @@ def add_lag_features(
 
     return df_with_lags
 
+def add_upcoming_total_points(
+    df: pd.DataFrame,
+    player_col: str = "name_encoded",
+    season_col: str = "season_x",
+    week_col: str = "round",
+    points_col: str = "total_points",
+) -> pd.DataFrame:
+    """
+    Adds a new column `upcoming_total_points` representing next week's points
+    for each player-season, shifted by -1 in chronological order.
+    """
+    df_sorted = df.sort_values([player_col, season_col, week_col])
+    df_sorted["upcoming_total_points"] = (
+        df_sorted.groupby([player_col, season_col])[points_col].shift(-1)
+    )
+    df_sorted = df_sorted.dropna(subset=["upcoming_total_points"]).reset_index(drop=True)
+    return df_sorted
+
+def season_start_year(season_str: str) -> int:
+    s = str(season_str)
+    try:
+        return int(s.split("-")[0])
+    except Exception:
+        return int(float(s))
