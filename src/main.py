@@ -147,7 +147,7 @@ def main():
 
     model_cat = train_catboost(X_train, y_train, X_valid, y_valid)
     evaluate_model(model_cat, X_test, y_test, X_train, y_train, X_valid, y_valid)
-    plot_learning_curves(model_cat)
+    # plot_learning_curves(model_cat)
 
     # -------- Test reporting: Seen vs Cold-start players ----------------------
     seen_players = set(train_names.unique())
