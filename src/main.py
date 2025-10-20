@@ -12,15 +12,12 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from scripts.model_training import (train_ffnn, build_xy, train_catboost,
-                                    evaluate_model, auto_global_temporal_split,
-                                    auto_global_temporal_split_inseason)
+from scripts.model_training import (train_ffnn, build_xy, evaluate_model, auto_global_temporal_split_inseason)
 from scripts.data_visualization import plot_learning_curves, summarize_round_splits
-from sklearn.model_selection import train_test_split
 from scripts.data_cleaning import drop_columns_save_interim, normalize_position_column
 from scripts.feature_engineering import (label_encode_column, one_hot_encode_columns,
                                          map_bool_to_int, add_form, add_team_and_opponent_goals,
-                                         add_lag_features, add_upcoming_total_points)
+                                         add_lag_features, add_upcoming_total_points, scale_all_numeric)
 
 from scripts.explainability import run_explainability
 
@@ -95,25 +92,32 @@ def main():
     print(df_with_lagged_features.columns.value_counts().count())
     print(df_with_lagged_features.head())
 
+    df_with_lagged_features = df_with_lagged_features.replace([np.inf, -np.inf], np.nan)
+    df_with_lagged_features = df_with_lagged_features.dropna()
+
     df_with_target = add_upcoming_total_points(df_with_lagged_features)
 
-    X, y = build_xy(df_with_target, keep_player_id=True, player_col="name_encoded")
+    df_scaled, scaler, scaled_cols = scale_all_numeric(
+        df=df_with_target,
+        filename=f"{args.filename}_lags",
+        output_subdir="interim",
+        scaler_type="standard",
+        exclude=["round", "upcoming_total_points"],
+        save_scaler=True,
+        verbose=True,
+    )
+
+    X, y = build_xy(df_scaled, keep_player_id=True, player_col="name_encoded")
 
     X = X.drop(columns=['total_points'])
 
-    # Without inter-season splits
-    # train_idx, valid_idx, test_idx, years_sorted = auto_global_temporal_split(
-    #     df_with_target,
-    #     season_col="season_x",
-    #     week_col="round",
-    #     train_frac=0.8,
-    #     valid_frac=0.2,
-    #     test_frac=0.2
-    # )
+    print("target scaled data")
+
+    print(df_scaled.head())
 
     # With inter-season splits
     train_idx, valid_idx, test_idx, years_sorted = auto_global_temporal_split_inseason(
-        df_with_target,
+        df_scaled,
         season_col="season_x",
         week_col="round",
         train_frac=0.8, valid_frac=0.1, test_frac=0.1,
@@ -122,7 +126,7 @@ def main():
     )
 
     _ = summarize_round_splits(
-        df=df_with_target,
+        df=df_scaled,
         train_idx=train_idx,
         valid_idx=valid_idx,
         test_idx=test_idx,
@@ -149,8 +153,8 @@ def main():
     model_ffnn = train_ffnn(X_train, y_train, X_valid, y_valid)
     evaluate_model(model_ffnn, X_test, y_test, X_train, y_train, X_valid, y_valid)
 
-    model_cat = train_catboost(X_train, y_train, X_valid, y_valid)
-    evaluate_model(model_cat, X_test, y_test, X_train, y_train, X_valid, y_valid)
+    # model_cat = train_catboost(X_train, y_train, X_valid, y_valid)
+    # evaluate_model(model_cat, X_test, y_test, X_train, y_train, X_valid, y_valid)
     # plot_learning_curves(model_cat)
 
     # --------Test reporting Shap and Lime-----------
@@ -165,23 +169,37 @@ def main():
     feature_names = list(X_train.columns)
 
     # choose rows with biggest errors to explain (separately per model)
-    rows_cat = pick_rows_for_explanations(model_cat, X_test, y_test, k=3)
+    # rows_cat = pick_rows_for_explanations(model_cat, X_test, y_test, k=3)
     rows_ffnn = pick_rows_for_explanations(model_ffnn, X_test, y_test, k=3)
-
-    print(f"\n[Explainability] CatBoost rows: {rows_cat}")
-    print(f"[Explainability] FFNN rows: {rows_ffnn}")
+    #
+    # print(f"\n[Explainability] CatBoost rows: {rows_cat}")
+    # print(f"[Explainability] FFNN rows: {rows_ffnn}")
 
     # CatBoost (fast Tree SHAP) + LIME
-    run_explainability(
-        model=model_cat,
-        model_name="catboost",
-        X_train=X_train,
-        X_test=X_test,
-        feature_names=feature_names,
-        local_rows=rows_cat,
-        do_shap=True,
-        do_lime=True,
-    )
+    # run_explainability(
+    #     model=model_cat,
+    #     model_name="catboost",
+    #     X_train=X_train,
+    #     X_test=X_test,
+    #     feature_names=feature_names,
+    #     local_rows=rows_cat,
+    #     do_shap=True,
+    #     do_lime=True,
+    # )
+
+    MY11 = [
+        "minutes",
+        "ict_index",
+        "goals_scored",
+        "assists",
+        "bps",
+        "clean_sheets",
+        "saves",
+        "goals_conceded",
+        "was_home",
+        "bonus",
+        "value",
+    ]
 
     # FFNN (model-agnostic SHAP) + LIME
     run_explainability(
@@ -191,8 +209,9 @@ def main():
         X_test=X_test,
         feature_names=feature_names,
         local_rows=rows_ffnn,
-        do_shap=True,  # can set False if slow; or keep (background is small)
+        do_shap=True,
         do_lime=True,
+        feature_whitelist=MY11,
     )
 
     # -------- Test reporting: Seen vs Cold-start players ----------------------
@@ -213,9 +232,9 @@ def main():
         metrics = evaluate_model(model, X_te[mask], y_te[mask])
         print(f"{label}: n={n} | {metrics}")
 
-    print("\nCatBoost — Seen vs Cold-start:")
-    eval_subset(model_cat, X_test, y_test, test_seen_mask, "TEST (seen players)")
-    eval_subset(model_cat, X_test, y_test, test_cold_mask, "TEST (cold-start players)")
+    # print("\nCatBoost — Seen vs Cold-start:")
+    # eval_subset(model_cat, X_test, y_test, test_seen_mask, "TEST (seen players)")
+    # eval_subset(model_cat, X_test, y_test, test_cold_mask, "TEST (cold-start players)")
 
     print("\nFFNN — Seen vs Cold-start:")
     eval_subset(model_ffnn, X_test, y_test, test_seen_mask, "TEST (seen players)")
