@@ -1,7 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import Optional, Tuple, Iterable
-from sklearn.preprocessing import StandardScaler
 import tensorflow as tf
 
 # # Youssef's Config - Always Push with this one
@@ -15,7 +14,6 @@ from tensorflow.keras import layers, callbacks, regularizers
 def _set_seed(seed: int = 42):
     np.random.seed(seed)
     tf.random.set_seed(seed)
-
 
 def _build_ffnn(input_dim: int,
                 hidden_units: Iterable[int] = (256, 128, 64),
@@ -53,7 +51,6 @@ class FFNNRegressor:
     verbose: int = 1
 
     # Fitted artifacts
-    scaler: Optional[StandardScaler] = None
     model: Optional[keras.Model] = None
 
     def fit(self,
@@ -67,14 +64,9 @@ class FFNNRegressor:
         y_train = np.asarray(y_train, dtype=np.float32).reshape(-1, 1)
         y_valid = np.asarray(y_valid, dtype=np.float32).reshape(-1, 1)
 
-        # Scale inputs
-        self.scaler = StandardScaler()
-        X_train_s = self.scaler.fit_transform(X_train)
-        X_valid_s = self.scaler.transform(X_valid)
-
-        # Build & train
+        # Build & train directly on raw features (no scaling)
         self.model = _build_ffnn(
-            input_dim=X_train_s.shape[1],
+            input_dim=X_train.shape[1],
             hidden_units=self.hidden_units,
             dropout=self.dropout,
             l2=self.l2,
@@ -94,8 +86,8 @@ class FFNNRegressor:
         ]
 
         self.model.fit(
-            X_train_s, y_train,
-            validation_data=(X_valid_s, y_valid),
+            X_train, y_train,
+            validation_data=(X_valid, y_valid),
             epochs=self.epochs,
             batch_size=self.batch_size,
             verbose=self.verbose,
@@ -106,6 +98,10 @@ class FFNNRegressor:
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         X = np.nan_to_num(np.asarray(X, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
-        X_s = self.scaler.transform(X)
-        preds = self.model.predict(X_s, verbose=0).reshape(-1)
+        preds = self.model.predict(X, verbose=0).reshape(-1)
         return preds
+
+
+    # # Youssef's Config - Always Push with this one
+    # from tf_keras import layers, callbacks, regularizers
+    # import tf_keras as keras
