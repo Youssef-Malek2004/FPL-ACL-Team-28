@@ -47,7 +47,7 @@ def main():
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input CSV not found: {input_path}")
 
-    df = pd.read_csv(input_path)
+    df = pd.read_csv(input_path, low_memory=False)
 
     df = add_team_and_opponent_goals(df)
 
