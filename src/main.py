@@ -3,6 +3,7 @@ import os
 import sys
 import argparse
 import pandas as pd
+import numpy as np
 
 # How to run ->  "python src/main.py" in the Terminal
 
@@ -19,6 +20,8 @@ from scripts.data_cleaning import drop_columns_save_interim, normalize_position_
 from scripts.feature_engineering import (label_encode_column, one_hot_encode_columns,
                                          map_bool_to_int, add_form, add_team_and_opponent_goals,
                                          add_lag_features, add_upcoming_total_points)
+
+from scripts.explainability import run_explainability
 
 # Defaults
 DEFAULT_INPUT_REL = os.path.join("data", "raw", "cleaned_merged_seasons.csv")
@@ -148,6 +151,48 @@ def main():
     model_cat = train_catboost(X_train, y_train, X_valid, y_valid)
     evaluate_model(model_cat, X_test, y_test, X_train, y_train, X_valid, y_valid)
     plot_learning_curves(model_cat)
+
+    # --------Test reporting Shap and Lime-----------
+    def pick_rows_for_explanations(model, X_te: pd.DataFrame, y_te: pd.Series, k: int = 3):
+        """Return indices of the k largest absolute errors to explain."""
+        y_pred = np.asarray(model.predict(X_te.values)).reshape(-1)
+        errs = np.abs(y_pred - y_te.values)
+        k = min(k, len(errs))
+        return list(np.argsort(errs)[-k:][::-1])
+
+    # ------------ EXPLAINABILITY (SHAP + LIME) -------------
+    feature_names = list(X_train.columns)
+
+    # choose rows with biggest errors to explain (separately per model)
+    rows_cat = pick_rows_for_explanations(model_cat, X_test, y_test, k=3)
+    rows_ffnn = pick_rows_for_explanations(model_ffnn, X_test, y_test, k=3)
+
+    print(f"\n[Explainability] CatBoost rows: {rows_cat}")
+    print(f"[Explainability] FFNN rows: {rows_ffnn}")
+
+    # CatBoost (fast Tree SHAP) + LIME
+    run_explainability(
+        model=model_cat,
+        model_name="catboost",
+        X_train=X_train,
+        X_test=X_test,
+        feature_names=feature_names,
+        local_rows=rows_cat,
+        do_shap=True,
+        do_lime=True,
+    )
+
+    # FFNN (model-agnostic SHAP) + LIME
+    run_explainability(
+        model=model_ffnn,
+        model_name="ffnn",
+        X_train=X_train,
+        X_test=X_test,
+        feature_names=feature_names,
+        local_rows=rows_ffnn,
+        do_shap=True,  # can set False if slow; or keep (background is small)
+        do_lime=True,
+    )
 
     # -------- Test reporting: Seen vs Cold-start players ----------------------
     seen_players = set(train_names.unique())

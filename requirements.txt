@@ -3,3 +3,6 @@ catboost
 matplotlib
 tensorflow
 tf_keras
+shap>=0.45.0
+lime>=0.2.0.1
+

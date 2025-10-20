@@ -4,13 +4,13 @@ from typing import Optional, Tuple, Iterable
 from sklearn.preprocessing import StandardScaler
 import tensorflow as tf
 
-# Youssef's Config - Always Push with this one
-from tf_keras import layers, callbacks, regularizers
-import tf_keras as keras
+# # Youssef's Config - Always Push with this one
+# from tf_keras import layers, callbacks, regularizers
+# import tf_keras as keras
 
 # Mohamed's Config
-# from tensorflow import keras
-# from tensorflow.keras import layers, callbacks, regularizers
+from tensorflow import keras
+from tensorflow.keras import layers, callbacks, regularizers
 
 def _set_seed(seed: int = 42):
     np.random.seed(seed)
