@@ -1,8 +1,9 @@
-pandas
-catboost
-matplotlib
-tensorflow
+pandas~=2.2.3
+catboost~=1.2.8
+matplotlib~=3.10.1
+tensorflow~=2.19.0
 tf_keras
-shap>=0.45.0
-lime>=0.2.0.1
-
+numpy~=1.26.4
+scikit-learn~=1.6.1
+tf-keras~=2.19.0
+seaborn

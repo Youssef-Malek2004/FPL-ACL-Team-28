@@ -3,7 +3,6 @@ import os
 import sys
 import argparse
 import pandas as pd
-import numpy as np
 
 # How to run ->  "python src/main.py" in the Terminal
 
@@ -19,9 +18,7 @@ from scripts.data_visualization import plot_learning_curves, summarize_round_spl
 from scripts.data_cleaning import drop_columns_save_interim, normalize_position_column
 from scripts.feature_engineering import (label_encode_column, one_hot_encode_columns,
                                          map_bool_to_int, add_form, add_team_and_opponent_goals,
-                                         add_lag_features, add_upcoming_total_points, scale_all_numeric)
-
-from scripts.explainability import run_explainability
+                                         add_lag_features, add_upcoming_total_points)
 
 # Defaults
 DEFAULT_INPUT_REL = os.path.join("data", "raw", "cleaned_merged_seasons.csv")
@@ -50,7 +47,7 @@ def main():
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input CSV not found: {input_path}")
 
-    df = pd.read_csv(input_path)
+    df = pd.read_csv(input_path, low_memory=False)
 
     df = add_team_and_opponent_goals(df)
 
@@ -94,40 +91,9 @@ def main():
     print(df_with_lagged_features.columns.value_counts().count())
     print(df_with_lagged_features.head())
 
-    df_with_lagged_features = df_with_lagged_features.replace([np.inf, -np.inf], np.nan)
-    df_with_lagged_features = df_with_lagged_features.dropna()
-
-    # Scale (exclude the target if it’s still present in this DF)
-    df_scaled, scaler, scaled_cols = scale_all_numeric(
-        df=df_with_lagged_features,
-        filename=f"{args.filename}_lags",  # or any name you prefer
-        output_subdir="interim",
-        scaler_type="standard",  # or "minmax", "robust", "maxabs"
-        exclude=[""],  # don’t scale the target
-        save_scaler=True,
-        verbose=True,
-    )
-
     df_with_target = add_upcoming_total_points(df_with_lagged_features)
-    # Scale (exclude the target if it’s still present in this DF)
-    df_scaled, scaler, scaled_cols = scale_all_numeric(
-        df=df_with_target,
-        filename=f"{args.filename}_lags",  # or any name you prefer
-        output_subdir="interim",
-        scaler_type="standard",  # or "minmax", "robust", "maxabs"
-        exclude=["upcoming_total_points"],  # don’t scale the target
-        save_scaler=True,
-        verbose=True,
-    )
 
-    print("target scaled data")
-
-    print(df_scaled.head())
-
-
-
-
-    X, y = build_xy(df_scaled, keep_player_id=True, player_col="name_encoded")
+    X, y = build_xy(df_with_target, keep_player_id=True, player_col="name_encoded")
 
     X = X.drop(columns=['total_points'])
 
@@ -182,67 +148,6 @@ def main():
     model_cat = train_catboost(X_train, y_train, X_valid, y_valid)
     evaluate_model(model_cat, X_test, y_test, X_train, y_train, X_valid, y_valid)
     # plot_learning_curves(model_cat)
-
-    # --------Test reporting Shap and Lime-----------
-    def pick_rows_for_explanations(model, X_te: pd.DataFrame, y_te: pd.Series, k: int = 3):
-        """Return indices of the k largest absolute errors to explain."""
-        y_pred = np.asarray(model.predict(X_te.values)).reshape(-1)
-        errs = np.abs(y_pred - y_te.values)
-        k = min(k, len(errs))
-        return list(np.argsort(errs)[-k:][::-1])
-
-    # ------------ EXPLAINABILITY (SHAP + LIME) -------------
-    feature_names = list(X_train.columns)
-    print(feature_names)
-
-    # choose rows with biggest errors to explain (separately per model)
-    rows_cat = pick_rows_for_explanations(model_cat, X_test, y_test, k=3)
-    rows_ffnn = pick_rows_for_explanations(model_ffnn, X_test, y_test, k=3)
-
-    print(f"\n[Explainability] CatBoost rows: {rows_cat}")
-    print(f"[Explainability] FFNN rows: {rows_ffnn}")
-
-    # Pick 11 current-round features (added "value")
-    # --- pick 11 current-round features (added "value") ---
-    MY11 = [
-        "minutes",
-        "ict_index",
-        "goals_scored",
-        "assists",
-        "bps",
-        "clean_sheets",
-        "saves",
-        "goals_conceded",
-        "was_home",
-        "bonus",  # strictly current-round (swap to "form" if you want recent-form signal)
-        "value",
-    ]
-
-    # CatBoost (fast Tree SHAP) + LIME
-    # run_explainability(
-    #     model=model_cat,
-    #     model_name="catboost",
-    #     X_train=X_train,
-    #     X_test=X_test,
-    #     feature_names=feature_names,
-    #     local_rows=rows_cat,
-    #     do_shap=True,
-    #     do_lime=True,
-    #     feature_whitelist=MY11,  # 👈 here
-    # )
-
-    # FFNN (model-agnostic SHAP) + LIME
-    run_explainability(
-        model=model_ffnn,
-        model_name="ffnn",
-        X_train=X_train,
-        X_test=X_test,
-        feature_names=feature_names,
-        local_rows=rows_ffnn,
-        do_shap=True,  # can set False if slow
-        do_lime=True,
-        feature_whitelist=MY11,  # 👈 and here
-    )
 
     # -------- Test reporting: Seen vs Cold-start players ----------------------
     seen_players = set(train_names.unique())
