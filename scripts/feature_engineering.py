@@ -1,6 +1,11 @@
 import os
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
+import json
+import pickle
+from typing import Optional, Tuple, List
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler
+
 
 
 def one_hot_encode_columns(
@@ -308,3 +313,88 @@ def season_start_year(season_str: str) -> int:
         return int(s.split("-")[0])
     except Exception:
         return int(float(s))
+
+def scale_all_numeric(
+    df: pd.DataFrame,
+    filename: str = "dataset",
+    output_subdir: str = "interim",
+    columns: Optional[List[str]] = None,      # None -> auto-detect numeric
+    exclude: Optional[List[str]] = None,      # columns to leave untouched
+    scaler_type: str = "standard",            # "standard" | "minmax" | "robust" | "maxabs"
+    feature_range: Tuple[float, float] = (0.0, 1.0),  # only for "minmax"
+    fit_on: Optional[pd.DataFrame] = None,    # fit scaler on this DF, then transform `df` (avoid leakage)
+    save_scaler: bool = True,
+    verbose: bool = True,
+) -> tuple[pd.DataFrame, object, List[str]]:
+    """
+    Scales numeric columns and writes artifacts under ../data/<output_subdir>/ :
+      - <filename>_scaled.csv
+      - <filename>_scaler.pkl
+      - <filename>_scaled_columns.json
+
+    Returns (scaled_df, fitted_scaler, scaled_columns).
+    """
+    # --- Setup directories (same convention as other helpers) ---
+    root_data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
+    output_folder = os.path.join(root_data_dir, output_subdir)
+    os.makedirs(output_folder, exist_ok=True)
+
+    # --- Decide which columns to scale ---
+    if columns is None:
+        numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+    else:
+        numeric_cols = list(columns)
+
+    if exclude:
+        ex = set(exclude)
+        numeric_cols = [c for c in numeric_cols if c not in ex]
+
+    if not numeric_cols:
+        if verbose:
+            print("No numeric columns selected for scaling. Saving original DataFrame.")
+        out_path = os.path.join(output_folder, f"{filename}_scaled.csv")
+        df.to_csv(out_path, index=False)
+        return df.copy(), None, []
+
+    # --- Choose scaler ---
+    st = scaler_type.lower().strip()
+    if st == "standard":
+        scaler = StandardScaler()
+    elif st == "minmax":
+        scaler = MinMaxScaler(feature_range=feature_range)
+    elif st == "robust":
+        scaler = RobustScaler()
+    elif st == "maxabs":
+        scaler = MaxAbsScaler()
+    else:
+        raise ValueError("Unknown scaler_type. Use one of: 'standard' | 'minmax' | 'robust' | 'maxabs'.")
+
+    # --- Fit on specified data (e.g., your train split) ---
+    fit_df = fit_on if fit_on is not None else df
+    scaler.fit(fit_df[numeric_cols].astype(float).values)
+
+    # --- Transform and save ---
+    out = df.copy()
+    out[numeric_cols] = scaler.transform(out[numeric_cols].astype(float).values)
+
+    scaled_path = os.path.join(output_folder, f"{filename}_scaled.csv")
+    out.to_csv(scaled_path, index=False)
+
+    if save_scaler:
+        pkl_path = os.path.join(output_folder, f"{filename}_scaler.pkl")
+        with open(pkl_path, "wb") as f:
+            pickle.dump({"scaler": scaler, "columns": numeric_cols, "scaler_type": st}, f)
+
+        cols_json_path = os.path.join(output_folder, f"{filename}_scaled_columns.json")
+        with open(cols_json_path, "w", encoding="utf-8") as f:
+            json.dump({"columns": numeric_cols}, f, indent=2)
+
+        if verbose:
+            print(f"Saved scaler -> {pkl_path}")
+            print(f"Saved scaled columns -> {cols_json_path}")
+
+    if verbose:
+        print(f"Scaled DataFrame saved to: {scaled_path}")
+        print(f"Columns scaled ({len(numeric_cols)}): {numeric_cols}")
+
+    return out, scaler, numeric_cols
