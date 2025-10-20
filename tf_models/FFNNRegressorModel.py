@@ -50,7 +50,7 @@ class FFNNRegressor:
     batch_size: int = 1024
     patience: int = 30
     seed: int = 42
-    verbose: int = 1
+    verbose: int = 2
 
     # Fitted artifacts
     scaler: Optional[StandardScaler] = None

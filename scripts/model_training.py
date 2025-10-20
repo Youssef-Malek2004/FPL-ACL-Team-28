@@ -26,7 +26,7 @@ def train_ffnn(
             "batch_size": 1024,
             "patience": 25,
             "seed": 42,
-            "verbose": 1,
+            "verbose": 2,
         }
     model = FFNNRegressor(**params)
     model.fit(X_train, y_train, X_valid, y_valid)
@@ -210,6 +210,7 @@ def evaluate_model(
     X_test: pd.DataFrame, y_test: pd.Series,
     X_train: pd.DataFrame = None, y_train: pd.Series = None,
     X_valid: pd.DataFrame = None, y_valid: pd.Series = None,
+    Verbose: bool = True,
 ) -> dict:
     def _metrics(y_true, y_pred):
         mae = mean_absolute_error(y_true, y_pred)
@@ -219,26 +220,33 @@ def evaluate_model(
         return {"MAE": mae, "MSE": mse, "RMSE": rmse, "R2": r2}
 
     report = {}
+    preds = {}
 
     if X_train is not None and y_train is not None:
         preds_tr = model.predict(X_train)
         report["train"] = _metrics(y_train, preds_tr)
+        preds["train"] = preds_tr
 
     if X_valid is not None and y_valid is not None:
         preds_val = model.predict(X_valid)
         report["valid"] = _metrics(y_valid, preds_val)
+        preds["valid"] = preds_val
 
     preds_te = model.predict(X_test)
     report["test"] = _metrics(y_test, preds_te)
+    preds["test"] = preds_te
 
-    # Pretty print
-    print("\n📊 Evaluation Metrics:")
-    for split in ["train", "valid", "test"]:
-        if split in report:
-            m = report[split]
-            print(f"  {split.upper()}:  MAE={m['MAE']:.4f}  RMSE={m['RMSE']:.4f}  R2={m['R2']:.4f}")
+    if Verbose:
+        print("\nEvaluation Metrics:")
+        for split in ["train", "valid", "test"]:
+            if split in report:
+                m = report[split]
+                print(f"  {split.upper()}:  MAE={m['MAE']:.4f}  RMSE={m['RMSE']:.4f}  R2={m['R2']:.4f}")
 
+    # return both for reporting
+    report["_predictions"] = preds
     return report
+
 
 
 def auto_global_temporal_split(

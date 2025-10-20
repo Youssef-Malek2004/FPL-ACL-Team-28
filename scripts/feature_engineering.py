@@ -90,7 +90,7 @@ def label_encode_column(
 
     df = df.drop(columns=[column])
 
-    print(f"Column '{column}' label-encoded → new column '{column}_encoded'")
+    # print(f"Column '{column}' label-encoded → new column '{column}_encoded'")
 
     cleaned_path = os.path.join(data_dir, f"{filename}_label_encoded.csv")
 
@@ -184,7 +184,7 @@ def add_form(
 
     out_path = os.path.join(data_dir, f"{filename}.csv")
     out.to_csv(out_path, index=False)
-    print(f"Form-added file saved to: {out_path}")
+    # print(f"Form-added file saved to: {out_path}")
 
     return out
 

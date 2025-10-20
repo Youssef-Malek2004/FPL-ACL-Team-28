@@ -44,7 +44,7 @@ def drop_columns_save_interim(
     # Save both files
     df_reduced.to_csv(cleaned_path, index=False)
 
-    print(f"Cleaned file saved to: {cleaned_path}")
+    # print(f"Cleaned file saved to: {cleaned_path}")
 
     return df_reduced
 
