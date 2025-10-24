@@ -80,11 +80,11 @@ def main():
 
     df_with_form = add_form(df_mapped)
 
-    cols_to_add_lag = [
-        'assists', 'bonus', 'bps', 'clean_sheets',
-        'goals_conceded', 'goals_scored', 'ict_index',
-        'minutes', 'saves', 'yellow_cards', 'ally_goals', 'opponent_goals',
-    ]
+    # cols_to_add_lag = [
+    #     'assists', 'bonus', 'bps', 'clean_sheets',
+    #     'goals_conceded', 'goals_scored', 'ict_index',
+    #     'minutes', 'saves', 'yellow_cards', 'ally_goals', 'opponent_goals',
+    # ]
 
     # df_with_lagged_features = add_lag_features(df_with_form, cols_to_add_lag)
     #
@@ -99,7 +99,7 @@ def main():
 
     df_scaled, scaler, scaled_cols = scale_all_numeric(
         df=df_with_target,
-        filename=f"{args.filename}_lags",
+        filename=f"{args.filename}",
         output_subdir="interim",
         scaler_type="standard",
         exclude=["round", "upcoming_total_points"],

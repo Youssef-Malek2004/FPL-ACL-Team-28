@@ -55,15 +55,19 @@ def one_hot_encode_columns(
     return encoded_df
 
 
-
 def label_encode_column(
     df: pd.DataFrame,
     column: str,
     filename: str = "dataset",
     output_subdir: str = "interim",
-) -> tuple[pd.DataFrame, LabelEncoder]:
+) -> Tuple[pd.DataFrame, LabelEncoder]:
     """
-    Label-encodes a single categorical column (e.g., player names).
+    Label-encodes a single categorical column (e.g., player names) and saves
+    both the encoded DataFrame and the fitted LabelEncoder object for reuse.
+
+    Artifacts saved under ../data/<output_subdir>/:
+      - <filename>_label_encoded.csv
+      - <filename>_<column>_label_encoder.pkl
 
     Parameters
     ----------
@@ -72,36 +76,36 @@ def label_encode_column(
     column : str
         Column name to label-encode.
     filename : str, optional
-        Base name for reference/logging only (default is 'dataset').
+        Base name for saved files (default: 'dataset').
     output_subdir : str, optional
-        Folder under /data where outputs would be saved if persisted
-        (kept here for signature consistency).
+        Folder under /data where outputs are saved (default: 'interim').
 
     Returns
     -------
-    tuple[pd.DataFrame, LabelEncoder]
+    Tuple[pd.DataFrame, LabelEncoder]
         - DataFrame with a new column '<column>_encoded'
         - The fitted LabelEncoder (for reverse mapping)
     """
 
-    # Determine absolute path: ../data/interim relative to this script
     script_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.abspath(os.path.join(script_dir, "..", "data", output_subdir))
-
     os.makedirs(data_dir, exist_ok=True)
 
+    # --- Fit and encode ---
     le = LabelEncoder()
     df[f"{column}_encoded"] = le.fit_transform(df[column].astype(str))
-
     df = df.drop(columns=[column])
 
-    print(f"Column '{column}' label-encoded → new column '{column}_encoded'")
+    # --- Save the encoded dataframe ---
+    encoded_csv_path = os.path.join(data_dir, f"{filename}_label_encoded.csv")
+    df.to_csv(encoded_csv_path, index=False)
 
-    cleaned_path = os.path.join(data_dir, f"{filename}_label_encoded.csv")
-
-    df.to_csv(cleaned_path, index=False)
+    encoder_pkl_path = os.path.join(data_dir, f"{filename}_{column}_label_encoder.pkl")
+    with open(encoder_pkl_path, "wb") as f:
+        pickle.dump(le, f)
 
     return df, le
+
 
 def map_bool_to_int(
     df: pd.DataFrame,
@@ -288,6 +292,27 @@ def add_lag_features(
     df_with_lags.to_csv(lagged_path, index=False)
 
     return df_with_lags
+
+def add_upcoming_total_points_inference(
+    df: pd.DataFrame,
+    player_col: str = "name_encoded",
+    season_col: str = "season_x",
+    week_col: str = "round",
+    points_col: str = "total_points",
+) -> pd.DataFrame:
+    """
+    Like add_upcoming_total_points, but DOES NOT drop rows with missing future points.
+    We keep upcoming_total_points even if it's NaN (model target at training time).
+    This is safe for inference because we only need features to predict, not ground truth.
+    """
+    df_sorted = df.sort_values([player_col, season_col, week_col]).copy()
+
+    df_sorted["upcoming_total_points"] = (
+        df_sorted.groupby([player_col, season_col])[points_col].shift(-1)
+    )
+
+    return df_sorted.reset_index(drop=True)
+
 
 def add_upcoming_total_points(
     df: pd.DataFrame,

@@ -6,19 +6,23 @@ from catboost import CatBoostRegressor, Pool
 from itertools import product
 import pandas as pd
 import numpy as np
-
+import os
+import joblib
+from typing import Optional
 
 def train_ffnn(
     X_train, y_train, X_valid, y_valid,
-    params: Optional[dict] = None
+    params: Optional[dict] = None,
+    save_path: str = os.path.join("models", "ffnn_model.pkl"),
 ):
     """
-    Initializes and trains a feed-forward neural network for regression.
-    Returns a model with a .predict(...) method for compatibility with your evaluate_model().
+    Initializes, trains, and saves a feed-forward neural network for regression.
+    Saves the entire FFNNRegressor object as a .pkl file in the models directory.
+    Returns the trained model.
     """
     if params is None:
         params = {
-            "hidden_units": (256, 128, 64,32),
+            "hidden_units": (256, 128, 64, 32),
             "dropout": 0.10,
             "l2": 1e-4,
             "lr": 1e-3,
@@ -28,9 +32,20 @@ def train_ffnn(
             "seed": 42,
             "verbose": 1,
         }
+
+    # Initialize and train
     model = FFNNRegressor(**params)
     model.fit(X_train, y_train, X_valid, y_valid)
+
+    # Ensure models/ directory exists
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    # Save the entire FFNNRegressor object (recommended for reloading with joblib)
+    joblib.dump(model, save_path)
+
     return model
+
+
 
 
 def grid_search_ffnn(
