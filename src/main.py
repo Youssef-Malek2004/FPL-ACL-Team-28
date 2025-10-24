@@ -86,16 +86,16 @@ def main():
         'minutes', 'saves', 'yellow_cards', 'ally_goals', 'opponent_goals',
     ]
 
-    df_with_lagged_features = add_lag_features(df_with_form, cols_to_add_lag)
+    # df_with_lagged_features = add_lag_features(df_with_form, cols_to_add_lag)
+    #
+    # print(df_with_lagged_features.columns)
+    # print(df_with_lagged_features.columns.value_counts().count())
+    # print(df_with_lagged_features.head())
+    #
+    # df_with_lagged_features = df_with_lagged_features.replace([np.inf, -np.inf], np.nan)
+    # df_with_lagged_features = df_with_lagged_features.dropna()
 
-    print(df_with_lagged_features.columns)
-    print(df_with_lagged_features.columns.value_counts().count())
-    print(df_with_lagged_features.head())
-
-    df_with_lagged_features = df_with_lagged_features.replace([np.inf, -np.inf], np.nan)
-    df_with_lagged_features = df_with_lagged_features.dropna()
-
-    df_with_target = add_upcoming_total_points(df_with_lagged_features)
+    df_with_target = add_upcoming_total_points(df_with_form)
 
     df_scaled, scaler, scaled_cols = scale_all_numeric(
         df=df_with_target,
@@ -157,6 +157,7 @@ def main():
     # evaluate_model(model_cat, X_test, y_test, X_train, y_train, X_valid, y_valid)
     # plot_learning_curves(model_cat)
 
+
     # --------Test reporting Shap and Lime-----------
     def pick_rows_for_explanations(model, X_te: pd.DataFrame, y_te: pd.Series, k: int = 3):
         """Return indices of the k largest absolute errors to explain."""
@@ -164,6 +165,10 @@ def main():
         errs = np.abs(y_pred - y_te.values)
         k = min(k, len(errs))
         return list(np.argsort(errs)[-k:][::-1])
+
+    rid = 12191
+    print("in X_test:", rid in X_test.index)
+    print("in X_train:", rid in X_train.index)
 
     # ------------ EXPLAINABILITY (SHAP + LIME) -------------
     feature_names = list(X_train.columns)
@@ -174,19 +179,19 @@ def main():
     #
     # print(f"\n[Explainability] CatBoost rows: {rows_cat}")
     # print(f"[Explainability] FFNN rows: {rows_ffnn}")
-
-    # CatBoost (fast Tree SHAP) + LIME
-    # run_explainability(
-    #     model=model_cat,
-    #     model_name="catboost",
-    #     X_train=X_train,
-    #     X_test=X_test,
-    #     feature_names=feature_names,
-    #     local_rows=rows_cat,
-    #     do_shap=True,
-    #     do_lime=True,
-    # )
-
+    #
+    # # CatBoost (fast Tree SHAP) + LIME
+    # # run_explainability(
+    # #     model=model_cat,
+    # #     model_name="catboost",
+    # #     X_train=X_train,
+    # #     X_test=X_test,
+    # #     feature_names=feature_names,
+    # #     local_rows=rows_cat,
+    # #     do_shap=True,
+    # #     do_lime=True,
+    # # )
+    #
     MY11 = [
         "minutes",
         "ict_index",
@@ -208,10 +213,10 @@ def main():
         X_train=X_train,
         X_test=X_test,
         feature_names=feature_names,
-        local_rows=rows_ffnn,
+        local_rows=[12649],
         do_shap=True,
         do_lime=True,
-        feature_whitelist=MY11,
+
     )
 
     # -------- Test reporting: Seen vs Cold-start players ----------------------
